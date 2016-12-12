@@ -476,7 +476,7 @@ static int _cpu_unpark(unsigned int cpu, int tasks_frozen)
 		goto out;
 	}
 	
-	/*
+	printk("Creating smpboot threads");
 	ret = smpboot_create_threads(cpu);
 	if (ret)
 		goto out;
