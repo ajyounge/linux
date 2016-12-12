@@ -19,6 +19,7 @@
 #include <linux/mutex.h>
 #include <linux/gfp.h>
 #include <linux/suspend.h>
+#include <linux/smpboot.h>
 
 #include "smpboot.h"
 
@@ -283,6 +284,68 @@ static int __ref take_cpu_down(void *_param)
 }
 
 /* Requires cpu_add_remove_lock to be held */
+static int __ref _cpu_park(unsigned int cpu, int tasks_frozen)
+{
+	int err, nr_calls = 0;
+	void *hcpu = (void *)(long)cpu;
+	unsigned long mod = tasks_frozen ? CPU_TASKS_FROZEN : 0;
+	struct take_cpu_down_param tcd_param = {
+		.mod = mod,
+		.hcpu = hcpu,
+	};
+
+	if (num_online_cpus() == 1)
+		return -EBUSY;
+
+	if (!cpu_online(cpu))
+		return -EINVAL;
+
+	cpu_hotplug_begin();
+
+	err = __cpu_notify(CPU_DOWN_PREPARE | mod, hcpu, -1, &nr_calls);
+	if (err) {
+		nr_calls--;
+		__cpu_notify(CPU_DOWN_FAILED | mod, hcpu, nr_calls, NULL);
+		printk("%s: attempt to take down CPU %u failed\n",
+				__func__, cpu);
+		goto out_release;
+	}
+	smpboot_park_threads(cpu);
+	/*
+	err = __stop_machine(take_cpu_down, &tcd_param, cpumask_of(cpu));
+	if (err) {
+		smpboot_unpark_threads(cpu);
+		cpu_notify_nofail(CPU_DOWN_FAILED | mod, hcpu);
+		goto out_release;
+	}
+	BUG_ON(cpu_online(cpu));
+	*/	
+	/*
+	 * The migration_call() CPU_DYING callback will have removed all
+	 * runnable tasks from the cpu, there's only the idle task left now
+	 * that the migration thread is done doing the stop_machine thing.
+	 *
+	 * Wait for the stop thread to go away.
+	 */
+	/*
+	while (!idle_cpu(cpu))
+		cpu_relax();
+
+	__cpu_die(cpu);
+	*/
+	/* CPU is completely dead: tell everyone.  Too late to complain. */
+	//cpu_notify_nofail(CPU_DEAD | mod, hcpu);
+
+	//check_for_tasks(cpu);
+
+out_release:
+	cpu_hotplug_done();
+	if (!err)
+		cpu_notify_nofail(CPU_POST_DEAD | mod, hcpu);
+	return err;
+}
+
+/* Requires cpu_add_remove_lock to be held */
 static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 {
 	int err, nr_calls = 0;
@@ -310,16 +373,15 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 		goto out_release;
 	}
 	smpboot_park_threads(cpu);
-
+	
 	err = __stop_machine(take_cpu_down, &tcd_param, cpumask_of(cpu));
 	if (err) {
-		/* CPU didn't die: tell everyone.  Can't complain. */
 		smpboot_unpark_threads(cpu);
 		cpu_notify_nofail(CPU_DOWN_FAILED | mod, hcpu);
 		goto out_release;
 	}
 	BUG_ON(cpu_online(cpu));
-
+		
 	/*
 	 * The migration_call() CPU_DYING callback will have removed all
 	 * runnable tasks from the cpu, there's only the idle task left now
@@ -327,12 +389,12 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 	 *
 	 * Wait for the stop thread to go away.
 	 */
+	
 	while (!idle_cpu(cpu))
 		cpu_relax();
 
-	/* This actually kills the CPU. */
 	__cpu_die(cpu);
-
+	
 	/* CPU is completely dead: tell everyone.  Too late to complain. */
 	cpu_notify_nofail(CPU_DEAD | mod, hcpu);
 
@@ -345,9 +407,34 @@ out_release:
 	return err;
 }
 
+/*  AJY: function for parking threads off a cpu but still keeping CPU online*/
+int __ref cpu_park(unsigned int cpu)
+{
+	int err;
+
+	printk("AJY Parking threads on CPU %d ", cpu);
+
+	cpu_maps_update_begin();
+
+	if (cpu_hotplug_disabled) {
+		err = -EBUSY;
+		goto out;
+	}
+
+	err = _cpu_park(cpu, 0);
+
+out:
+	cpu_maps_update_done();
+	return err;
+}
+EXPORT_SYMBOL(cpu_park);
+
+
 int __ref cpu_down(unsigned int cpu)
 {
 	int err;
+
+	printk("AJY Taking CPU %d down!", cpu);
 
 	cpu_maps_update_begin();
 
@@ -364,6 +451,68 @@ out:
 }
 EXPORT_SYMBOL(cpu_down);
 #endif /*CONFIG_HOTPLUG_CPU*/
+
+static int _cpu_unpark(unsigned int cpu, int tasks_frozen)
+{
+	int ret, nr_calls = 0;
+	void *hcpu = (void *)(long)cpu;
+	unsigned long mod = tasks_frozen ? CPU_TASKS_FROZEN : 0;
+	struct task_struct *idle;
+
+	cpu_hotplug_begin();
+
+	/*
+	if (cpu_online(cpu) || !cpu_present(cpu)) {
+		ret = -EINVAL;
+		printk("Cannot uppark CPU %d because the CPU is currently present\n", cpu);
+		goto out;
+	}
+	*/
+
+	idle = idle_thread_get(cpu);
+	if (IS_ERR(idle)) {
+		ret = PTR_ERR(idle);
+		printk("Cannot uppark CPU %d because the CPU is currently erred idle\n", cpu);
+		goto out;
+	}
+	
+	/*
+	ret = smpboot_create_threads(cpu);
+	if (ret)
+		goto out;
+	*/
+
+	ret = __cpu_notify(CPU_UP_PREPARE | mod, hcpu, -1, &nr_calls);
+	if (ret) {
+		nr_calls--;
+		printk(KERN_WARNING "%s: attempt to bring up CPU %u failed\n",
+				__func__, cpu);
+		goto out_notify;
+	}
+
+	/* Arch-specific enabling code. */
+	/*	
+	ret = __cpu_up(cpu, idle);
+	if (ret != 0)
+		goto out_notify;
+	BUG_ON(!cpu_online(cpu));
+	*/
+
+	/* Wake the per cpu threads */
+	smpboot_unpark_threads(cpu);
+
+	/* Now call notifier in preparation. */
+	cpu_notify(CPU_ONLINE | mod, hcpu);
+
+out_notify:
+	if (ret != 0)
+		__cpu_notify(CPU_UP_CANCELED | mod, hcpu, nr_calls, NULL);
+out:
+	cpu_hotplug_done();
+
+	return ret;
+}
+
 
 /* Requires cpu_add_remove_lock to be held */
 static int _cpu_up(unsigned int cpu, int tasks_frozen)
@@ -418,6 +567,64 @@ out:
 
 	return ret;
 }
+
+/* AJY unpark the CPU so threads can run on it again */
+int cpu_unpark(unsigned int cpu)
+{
+	int err = 0;
+
+#ifdef	CONFIG_MEMORY_HOTPLUG
+	int nid;
+	pg_data_t	*pgdat;
+#endif
+
+	if (!cpu_possible(cpu)) {
+		printk(KERN_ERR "can't online cpu %d because it is not "
+			"configured as may-hotadd at boot time\n", cpu);
+#if defined(CONFIG_IA64)
+		printk(KERN_ERR "please check additional_cpus= boot "
+				"parameter\n");
+#endif
+		return -EINVAL;
+	}
+
+#ifdef	CONFIG_MEMORY_HOTPLUG
+	nid = cpu_to_node(cpu);
+	if (!node_online(nid)) {
+		err = mem_online_node(nid);
+		if (err)
+			return err;
+	}
+
+	pgdat = NODE_DATA(nid);
+	if (!pgdat) {
+		printk(KERN_ERR
+			"Can't online cpu %d due to NULL pgdat\n", cpu);
+		return -ENOMEM;
+	}
+
+	if (pgdat->node_zonelists->_zonerefs->zone == NULL) {
+		mutex_lock(&zonelists_mutex);
+		build_all_zonelists(NULL, NULL);
+		mutex_unlock(&zonelists_mutex);
+	}
+#endif
+
+	cpu_maps_update_begin();
+
+	if (cpu_hotplug_disabled) {
+		err = -EBUSY;
+		goto out;
+	}
+
+	err = _cpu_unpark(cpu, 0);
+
+out:
+	cpu_maps_update_done();
+	return err;
+}
+EXPORT_SYMBOL_GPL(cpu_unpark);
+
 
 int cpu_up(unsigned int cpu)
 {

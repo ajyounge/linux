@@ -49,4 +49,9 @@ int smpboot_register_percpu_thread(struct smp_hotplug_thread *plug_thread);
 void smpboot_unregister_percpu_thread(struct smp_hotplug_thread *plug_thread);
 int smpboot_thread_schedule(void);
 
+//int smpboot_create_threads(unsigned int cpu);
+void smpboot_park_threads(unsigned int cpu);
+void smpboot_unpark_threads(unsigned int cpu);
+
+
 #endif
