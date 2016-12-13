@@ -460,6 +460,8 @@ static int _cpu_unpark(unsigned int cpu, int tasks_frozen)
 	struct task_struct *idle;
 
 	cpu_hotplug_begin();
+	
+	printk("AJY: Past hotplug begin");	
 
 	/*
 	if (cpu_online(cpu) || !cpu_present(cpu)) {
@@ -468,7 +470,7 @@ static int _cpu_unpark(unsigned int cpu, int tasks_frozen)
 		goto out;
 	}
 	*/
-
+	/*
 	idle = idle_thread_get(cpu);
 	if (IS_ERR(idle)) {
 		ret = PTR_ERR(idle);
@@ -480,7 +482,6 @@ static int _cpu_unpark(unsigned int cpu, int tasks_frozen)
 	ret = smpboot_create_threads(cpu);
 	if (ret)
 		goto out;
-	*/
 
 	ret = __cpu_notify(CPU_UP_PREPARE | mod, hcpu, -1, &nr_calls);
 	if (ret) {
@@ -489,7 +490,7 @@ static int _cpu_unpark(unsigned int cpu, int tasks_frozen)
 				__func__, cpu);
 		goto out_notify;
 	}
-
+	*/
 	/* Arch-specific enabling code. */
 	/*	
 	ret = __cpu_up(cpu, idle);
@@ -497,12 +498,15 @@ static int _cpu_unpark(unsigned int cpu, int tasks_frozen)
 		goto out_notify;
 	BUG_ON(!cpu_online(cpu));
 	*/
-
+	
 	/* Wake the per cpu threads */
-	smpboot_unpark_threads(cpu);
+	//smpboot_unpark_threads(cpu);
 
 	/* Now call notifier in preparation. */
-	cpu_notify(CPU_ONLINE | mod, hcpu);
+	//cpu_notify(CPU_ONLINE | mod, hcpu);
+	
+	printk("AJY: Notified CPU online");	
+	
 
 out_notify:
 	if (ret != 0)
