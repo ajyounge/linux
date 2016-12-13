@@ -461,7 +461,7 @@ static int _cpu_unpark(unsigned int cpu, int tasks_frozen)
 
 	cpu_hotplug_begin();
 	
-	printk("AJY: Past hotplug begin");	
+	printk("AJY: Past hotplug begin\n");	
 
 	/*
 	if (cpu_online(cpu) || !cpu_present(cpu)) {
@@ -482,7 +482,7 @@ static int _cpu_unpark(unsigned int cpu, int tasks_frozen)
 	ret = smpboot_create_threads(cpu);
 	if (ret)
 		goto out;
-
+	
 	ret = __cpu_notify(CPU_UP_PREPARE | mod, hcpu, -1, &nr_calls);
 	if (ret) {
 		nr_calls--;
@@ -505,7 +505,8 @@ static int _cpu_unpark(unsigned int cpu, int tasks_frozen)
 	/* Now call notifier in preparation. */
 	//cpu_notify(CPU_ONLINE | mod, hcpu);
 	
-	printk("AJY: Notified CPU online");	
+	ret = 0;
+	printk("AJY: Notified CPU online\n");	
 	
 
 out_notify:
@@ -622,6 +623,7 @@ int cpu_unpark(unsigned int cpu)
 	}
 
 	err = _cpu_unpark(cpu, 0);
+	printk("CPU unpark returned %d\n", err);
 
 out:
 	cpu_maps_update_done();
