@@ -482,7 +482,8 @@ static int _cpu_unpark(unsigned int cpu, int tasks_frozen)
 	ret = smpboot_create_threads(cpu);
 	if (ret)
 		goto out;
-	
+	*/
+		
 	ret = __cpu_notify(CPU_UP_PREPARE | mod, hcpu, -1, &nr_calls);
 	if (ret) {
 		nr_calls--;
@@ -490,7 +491,9 @@ static int _cpu_unpark(unsigned int cpu, int tasks_frozen)
 				__func__, cpu);
 		goto out_notify;
 	}
-	*/
+	
+	printk("AJY: Notified CPU up prepare\n");	
+	
 	/* Arch-specific enabling code. */
 	/*	
 	ret = __cpu_up(cpu, idle);
@@ -505,8 +508,6 @@ static int _cpu_unpark(unsigned int cpu, int tasks_frozen)
 	/* Now call notifier in preparation. */
 	//cpu_notify(CPU_ONLINE | mod, hcpu);
 	
-	ret = 0;
-	printk("AJY: Notified CPU online\n");	
 	
 
 out_notify:
