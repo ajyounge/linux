@@ -336,7 +336,7 @@ static int __ref _cpu_park(unsigned int cpu, int tasks_frozen)
 	/* CPU is completely dead: tell everyone.  Too late to complain. */
 	//cpu_notify_nofail(CPU_DEAD | mod, hcpu);
 
-	//check_for_tasks(cpu);
+	check_for_tasks(cpu);
 
 out_release:
 	cpu_hotplug_done();
